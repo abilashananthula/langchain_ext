@@ -2,13 +2,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
-from langchain_core.documents import Document
-from langchain_core.language_models import BaseLanguageModel
-from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.runnables import Runnable
-from langchain_core.vectorstores import VectorStore
-
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForRetrieverRun,
     CallbackManagerForRetrieverRun,
@@ -16,12 +9,12 @@ from langchain.callbacks.manager import (
 from langchain.chains.query_constructor.base import load_query_constructor_runnable
 from langchain.chains.query_constructor.ir import StructuredQuery, Visitor
 from langchain.chains.query_constructor.schema import AttributeInfo
+from langchain.pydantic_v1 import BaseModel, Field, root_validator
 from langchain.retrievers.self_query.chroma import ChromaTranslator
 from langchain.retrievers.self_query.dashvector import DashvectorTranslator
 from langchain.retrievers.self_query.deeplake import DeepLakeTranslator
 from langchain.retrievers.self_query.elasticsearch import ElasticsearchTranslator
 from langchain.retrievers.self_query.milvus import MilvusTranslator
-from langchain.retrievers.self_query.mongodb_atlas import MongoDBAtlasTranslator
 from langchain.retrievers.self_query.myscale import MyScaleTranslator
 from langchain.retrievers.self_query.opensearch import OpenSearchTranslator
 from langchain.retrievers.self_query.pinecone import PineconeTranslator
@@ -31,13 +24,15 @@ from langchain.retrievers.self_query.supabase import SupabaseVectorTranslator
 from langchain.retrievers.self_query.timescalevector import TimescaleVectorTranslator
 from langchain.retrievers.self_query.vectara import VectaraTranslator
 from langchain.retrievers.self_query.weaviate import WeaviateTranslator
+from langchain.schema import BaseRetriever, Document
+from langchain.schema.language_model import BaseLanguageModel
+from langchain.schema.runnable import Runnable
 from langchain.vectorstores import (
     Chroma,
     DashVector,
     DeepLake,
     ElasticsearchStore,
     Milvus,
-    MongoDBAtlasVectorSearch,
     MyScale,
     OpenSearchVectorSearch,
     Pinecone,
@@ -46,6 +41,7 @@ from langchain.vectorstores import (
     SupabaseVectorStore,
     TimescaleVector,
     Vectara,
+    VectorStore,
     Weaviate,
 )
 
@@ -68,7 +64,6 @@ def _get_builtin_translator(vectorstore: VectorStore) -> Visitor:
         SupabaseVectorStore: SupabaseVectorTranslator,
         TimescaleVector: TimescaleVectorTranslator,
         OpenSearchVectorSearch: OpenSearchTranslator,
-        MongoDBAtlasVectorSearch: MongoDBAtlasTranslator,
     }
     if isinstance(vectorstore, Qdrant):
         return QdrantTranslator(metadata_key=vectorstore.metadata_payload_key)
@@ -140,9 +135,9 @@ class SelfQueryRetriever(BaseRetriever, BaseModel):
         return new_query, search_kwargs
 
     def _get_docs_with_query(
-        self, query: str, search_kwargs: Dict[str, Any]
+        self, query: str, search_kwargs: Dict[str, Any],  get_scores = False
     ) -> List[Document]:
-        docs = self.vectorstore.search(query, self.search_type, **search_kwargs)
+        docs = self.vectorstore.search(query, self.search_type, **search_kwargs, get_scores = get_scores)
         return docs
 
     async def _aget_docs_with_query(
@@ -170,6 +165,37 @@ class SelfQueryRetriever(BaseRetriever, BaseModel):
         new_query, search_kwargs = self._prepare_query(query, structured_query)
         docs = self._get_docs_with_query(new_query, search_kwargs)
         return docs
+    
+    def _get_documents_from_structured_query(
+        self, query: str, structured_query: StructuredQuery,  get_scores = False) -> List[Document]:
+        """Get documents relevant for a query from structured query.
+
+        Args:
+            query: string to find relevant documents for
+
+        Returns:
+            List of relevant documents
+        """ 
+        new_query, search_kwargs = self._prepare_query(query, structured_query)
+        docs = self._get_docs_with_query(new_query, search_kwargs,  get_scores = False)
+        return docs
+    
+    def _get_structured_query(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """Get documents relevant for a query.
+
+        Args:
+            query: string to find relevant documents for
+
+        Returns:
+            List of relevant documents
+        """
+        structured_query = self.query_constructor.invoke(
+            {"query": query}, config={"callbacks": run_manager.get_child()}
+        )
+        
+        return structured_query
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
@@ -208,17 +234,11 @@ class SelfQueryRetriever(BaseRetriever, BaseModel):
             structured_query_translator = _get_builtin_translator(vectorstore)
         chain_kwargs = chain_kwargs or {}
 
-        if (
-            "allowed_comparators" not in chain_kwargs
-            and structured_query_translator.allowed_comparators is not None
-        ):
+        if "allowed_comparators" not in chain_kwargs:
             chain_kwargs[
                 "allowed_comparators"
             ] = structured_query_translator.allowed_comparators
-        if (
-            "allowed_operators" not in chain_kwargs
-            and structured_query_translator.allowed_operators is not None
-        ):
+        if "allowed_operators" not in chain_kwargs:
             chain_kwargs[
                 "allowed_operators"
             ] = structured_query_translator.allowed_operators

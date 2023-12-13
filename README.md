@@ -110,3 +110,13 @@ For detailed information on how to contribute, see [here](.github/CONTRIBUTING.m
 ## 🌟 Contributors
 
 [![langchain contributors](https://contrib.rocks/image?repo=langchain-ai/langchain&max=2000)](https://github.com/langchain-ai/langchain/graphs/contributors)
+
+
+
+### for extended retriever, following are modified
+
+libs/langchain/langchain/retrievers/self_query/base.py
+libs/langchain/langchain/schema/retriever.py    
+libs/langchain/langchain/schema/runnable/base.py
+libs/langchain/langchain/schema/vectorstore.py  
+libs/langchain/langchain/vectorstores/chroma.py
