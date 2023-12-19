@@ -120,3 +120,5 @@ libs/langchain/langchain/schema/retriever.py
 libs/langchain/langchain/schema/runnable/base.py
 libs/langchain/langchain/schema/vectorstore.py  
 libs/langchain/langchain/vectorstores/chroma.py
+libs\langchain\langchain\embeddings\__init__.py
+libs\langchain\langchain\embeddings\huggingface_hub.py
